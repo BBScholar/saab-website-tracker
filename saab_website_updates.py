@@ -1,97 +1,151 @@
 #! /bin/python3
 
-
-import yaml 
-import sys
-import time
+import os, sys, time
+from datetime import datetime
+import yaml
+import pprint
 import requests
 from requests.auth import HTTPBasicAuth
-import os
 import difflib
 
-var_path = "/var/lib/saab/"
+
+default_message = """
+{class_code} site updated!
+Our lord and savior Dr. Daniel Saab has updated the course site. 
+See changes at {url}
+
+Here is the diff:
+{diff}
+"""
+
+default_headers = {
+    "User-Agent": "Mozilla/5.0"
+};
 
 
-def setup_fs():
+def setup_fs(var_path):
     if os.path.exists(var_path) and not os.path.isfile(var_path):
         return;
-    print("{} does not existing, making directory now...", var_path)
+    print("{} does not exist, creating directory now...", var_path)
     os.mkdir(var_path)
 
-def send_email(email, recipiants, message, class_name):
-    msg = f"echo \"{message}\" | mutt -e \"my_hdr From:{email}\" -s \"Saab Website Updated -- {class_name}\" -- " 
-    for i in recipiants:
-        msg = msg + i
-    os.system(msg)
+def send_discord_message(hook_url, ping_id, message):
+    s = ""
+    if ping_id is not None:
+        s += f"<@&{ping_id}>\n"
+    s += message
     
+    data= {
+        "content": s
+    }
+    
+    requests.post(hook_url, data=data)
+
+def write_new_files(mod_fn, data_fn, mod, data):
+        with open(mod_fn, "w") as f:
+            f.write(mod)
+
+        with open(data_fn, "w") as f:
+            f.write(data)
+
+
 def main(config_file):
-    
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)
     print(config)
 
+    var_path = config["system"]["var_path"]
+    setup_fs(var_path)
 
-    default_headers = {
-        "User-Agent": "Mozilla/5.0"
-    };
-    
+    records = dict()
 
-    email = config["system"]["email"]
+    discord_url = config["system"]["discord_hook"]
+    admin_discord_url = config["system"]["admin_hook"]
     for x in config["sites"]:
         url = config["sites"][x]["url"]
         username = config["sites"][x]["user"]
         password = config["sites"][x]["password"]
 
-        new_req = requests.get(url, auth=HTTPBasicAuth(username, password), headers=default_headers)
-        print(new_req.headers)
-        new_modified = new_req.headers["last-modified"]
-        print(new_modified)
-        new_data = new_req.content
-        # print(new_data)
+        ping_id = config["sites"][x]["ping_role_id"]
 
-        old_fn_prevmod = var_path + f"{x}_prevmod"
-        old_fn_data = var_path + f"{x}_prevdata"
+        auth = HTTPBasicAuth(username, password)
 
-        if os.path.exists(old_fn_prevmod) and os.path.isfile(old_fn_prevmod):
-            with open(old_fn_prevmod, 'r') as f:
-                old_modified = f.read()
+        old_mod_fn = var_path + f"{x.lower()}_mod"
+        old_data_fn = var_path + f"{x.lower()}_data"
 
-            if False and old_modified == new_modified:
-                continue
-            else:
-                # read previous data file 
-                with open(old_fn_data, "r") as f:
-                    old_data = f.read()
+        # log some stuff
+        records[x] = dict()
 
-                # take diff between files
-                new_lines = str(new_data).split("\\n");
-                old_lines = old_data.split("\\n");
-                
-                print(new_lines)
-                print(sys.stdout.writelines(difflib.unified_diff(new_lines, old_lines, fromfiledate=new_modified, tofiledate=old_modified)))
-                # send email 
+        new_res = requests.get(url, auth=auth, headers=default_headers)
+        records[x]["status_code"] = new_res.status_code
+        if new_res.status_code != 200:
+            records[x]["failed"] = True
+            print(f"Cannot access {url}, failed with status code {new_res.status_code}")
+            continue
+        records[x]["failed"] = False
+        
+        print(new_res.headers)
+        new_mod = new_res.headers["last-modified"]
+        new_data = new_res.content.decode("utf-8")
 
-                # rewrite data file
-                with open(old_fn_prevmod, "w") as f:
-                    f.write(new_modified)
+        if not os.path.exists(old_mod_fn):
+            print(f"{old_mod_fn} has no entry, creating now...")
+            records[x]["new_entry"] = True
+            records[x]["modified"] = True
+            send_discord_message(admin_discord_url, None, f"Creating entry for class {x}.")
+            write_new_files(old_mod_fn, old_data_fn, new_mod, new_data)
+            continue
+        
+        records[x]["new_entry"] = False
+        with open(old_mod_fn, "r") as f:
+            old_mod = f.read() 
+        
+        debug_pings = False 
+        if not debug_pings and new_mod == old_mod:
+            print(f"No change to {url}.")
+            records[x]["modified"] = False
+            continue 
+        
+        records[x]["modified"] = True
 
-                # rewrite last modified file 
-                with open(old_fn_data, "w") as f:
-                    f.write(str(new_data))
-        else:
-            with open(old_fn_prevmod, "w") as f:
-                f.write(new_modified)
-            with open(old_fn_data, "w") as f:
-                f.write(str(new_data))
+        with open(old_data_fn, "r") as f:
+            old_data = f.read()
 
+        new_data_lines = new_data.split("\n")
+        old_data_lines = old_data.split("\n")
 
-        # print(new_file.contents)
+        # stuff with diff here
+        res = list(difflib.unified_diff(new_data_lines, old_data_lines, fromfiledate=old_mod, tofiledate=new_mod))
+        diff = ""
+        for i in res:
+            diff += i
+            diff += "\n"
+        # print(diff)
+
+        full_message = default_message.format(class_code=x.upper(), url=url, diff=diff)
+        print(full_message)
+
+        # stuff with discord here 
+        # send_discord_message(discord_url, [(x.upper() + "N")], full_message)
+        send_discord_message(discord_url, ping_id, full_message)
+
+        # write new files back
+        write_new_files(old_mod_fn, old_data_fn, new_mod, new_data)
+
+    # send debug message to admins
+    admin_message = f"""
+Website notifier logs:
+Time/Date: {str(datetime.now())}
+{pprint.pformat(records)}
+"""
+
+    send_discord_message(admin_discord_url, None, admin_message)
 
 
 if __name__ == "__main__":
-    args = len(sys.argv) - 1
-    if(args < 1):
-        print("Must enter config file")
+    if len(sys.argv) < 2:
+        print("Usage: Must provide path to config file")
         exit(1)
-    setup_fs()
+
     main(sys.argv[1])
+    exit(0)
