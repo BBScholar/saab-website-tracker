@@ -1,9 +1,10 @@
 
 system:
-  email: "email.to@send.from"
+  discord_hook: "https://something"
+  var_path: "/var/lib/saab"
 
 sites:
-  ecse318:
+  ECSE318:
     url: "url1"
     user: "username1"
     password: "password1"
@@ -11,7 +12,7 @@ sites:
       - "Ilovesaab@gmail.com"
       - "saabneedsanotificationserver@case.edu"
     user_db: "something for future"
-  ecse485:
+  ECSE485:
     url: "url2"
     user: "username2"
     password: "password2"
@@ -19,7 +20,7 @@ sites:
       - "Ilovesaab@gmail.com"
       - "saabneedsanotificationserver@case.edu"
     user_db: "something for future 2"
-  ecse315:
+  ECSE315:
     url: "url3"
     user: "username3"
     password: "password3"

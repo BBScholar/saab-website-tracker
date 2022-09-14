@@ -1,97 +1,111 @@
 #! /bin/python3
 
-
-import yaml 
-import sys
-import time
 import requests
 from requests.auth import HTTPBasicAuth
-import os
+
 import difflib
 
-var_path = "/var/lib/saab/"
+
+default_message = """
+{class} site updated!
+Our lord and savior Dr. Daniel Saab has updated the course site. 
+See changes at {url}
+
+Here is the diff:
+{diff}
+"""
 
 
-def setup_fs():
+def setup_fs(var_path):
     if os.path.exists(var_path) and not os.path.isfile(var_path):
         return;
-    print("{} does not existing, making directory now...", var_path)
+    print("{} does not exist, creating directory now...", var_path)
     os.mkdir(var_path)
 
-def send_email(email, recipiants, message, class_name):
-    msg = f"echo \"{message}\" | mutt -e \"my_hdr From:{email}\" -s \"Saab Website Updated -- {class_name}\" -- " 
-    for i in recipiants:
-        msg = msg + i
-    os.system(msg)
+def send_discord_message(hook_url, ping_roles, message):
+    s = ""
+    for p in ping_roles:
+        s += f"@{p}\n"
+    s += message
     
+    data= {
+        "content": s
+    }
+    requests.post(hook_url, data=data)
+
+def write_new_files(mod_fn, data_fn, mod, data):
+        with open(mod_fn, "w") as f:
+            f.write(mod)
+
+        with open(data_fn, "w") as f:
+            f.write(data)
+
+
+def create_diff(old_mod, new_mod, old_data, new_data):
+    iter = difflib.unified_diff(old_data, new_data, fromfiledate=new_mod, tofiledate=old_mod))
+    s = ""
+    for i in iter:
+        s += i;
+
+    return s
+
+
 def main(config_file):
-    
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)
     print(config)
 
+    var_path = config["system"]["var_path"]
+    setup_fs(var_path)
 
-    default_headers = {
-        "User-Agent": "Mozilla/5.0"
-    };
-    
-
-    email = config["system"]["email"]
+    discord_url = config["system"]["discord_hook"]
     for x in config["sites"]:
         url = config["sites"][x]["url"]
         username = config["sites"][x]["user"]
         password = config["sites"][x]["password"]
 
-        new_req = requests.get(url, auth=HTTPBasicAuth(username, password), headers=default_headers)
-        print(new_req.headers)
-        new_modified = new_req.headers["last-modified"]
-        print(new_modified)
-        new_data = new_req.content
-        # print(new_data)
+        auth = HTTPBasicAuth(username, password)
 
-        old_fn_prevmod = var_path + f"{x}_prevmod"
-        old_fn_data = var_path + f"{x}_prevdata"
+        old_mod_fn = var_path + f"{x.lower()}_mod"
+        old_data_fn = var_path + f"{x.lower()}_data"
 
-        if os.path.exists(old_fn_prevmod) and os.path.isfile(old_fn_prevmod):
-            with open(old_fn_prevmod, 'r') as f:
-                old_modified = f.read()
+        new_res = requests.head(url, auth=auth)
 
-            if False and old_modified == new_modified:
-                continue
-            else:
-                # read previous data file 
-                with open(old_fn_data, "r") as f:
-                    old_data = f.read()
+        if new_res.status_code != 200:
+            print(f"Cannot access {url}, failed with status code {new_res.status_code}")
+            continue
 
-                # take diff between files
-                new_lines = str(new_data).split("\\n");
-                old_lines = old_data.split("\\n");
-                
-                print(new_lines)
-                print(sys.stdout.writelines(difflib.unified_diff(new_lines, old_lines, fromfiledate=new_modified, tofiledate=old_modified)))
-                # send email 
+        new_mod = new_res.headers["Last-Modified"]
 
-                # rewrite data file
-                with open(old_fn_prevmod, "w") as f:
-                    f.write(new_modified)
+        if not os.path.exists(old_mod_fn):
+            print(f"{old_mod_fn} has no entry, creating now...")
+            write_new_files(old_mod_fn, old_data_fn, new_mod, str(requests.get(url, auth=auth).content))
+            continue
+        
+        with open(old_mod_fn, "r") as f:
+            old_mod = f.read() 
+        
+        if new_mod == old_mod:
+            print(f"No change to {url}.")
+            continue 
 
-                # rewrite last modified file 
-                with open(old_fn_data, "w") as f:
-                    f.write(str(new_data))
-        else:
-            with open(old_fn_prevmod, "w") as f:
-                f.write(new_modified)
-            with open(old_fn_data, "w") as f:
-                f.write(str(new_data))
+        new_data = str(requests.get(url, auth=auth).content)
 
+        with open(old_data_fn, "r") as f:
+            old_data = f.read()
 
-        # print(new_file.contents)
+        new_data_lines=new_data.split("\\n")
+        old_data_lines=old_data.split("\\n")
 
+        # stuff with diff here
+        diff =  create_diff(old_data, new_data, old_mod, new_mod)
+        full_message = format(default_message, class=x, url=url, diff=diff)
 
-if __name__ == "__main__":
-    args = len(sys.argv) - 1
-    if(args < 1):
-        print("Must enter config file")
-        exit(1)
-    setup_fs()
-    main(sys.argv[1])
+        print(full_message)
+
+        # stuff with discord here 
+        send_discord_message(discord_url, [(x.upper() + "N")], full_message)
+
+        # write new files back
+        write_new_files(old_mod_fn, old_data_fn, new_mod, new_data)
+
