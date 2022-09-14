@@ -15,7 +15,7 @@ var_path = "/var/lib/saab/"
 def setup_fs():
     if os.path.exists(var_path) and not os.path.isfile(var_path):
         return;
-    print("{} does not existing, making directory now...", var_path)
+    print("{} does not exist, making directory now...", var_path)
     os.mkdir(var_path)
 
 def send_email(email, recipiants, message, class_name):
@@ -71,19 +71,13 @@ def main(config_file):
                 print(sys.stdout.writelines(difflib.unified_diff(new_lines, old_lines, fromfiledate=new_modified, tofiledate=old_modified)))
                 # send email 
 
-                # rewrite data file
-                with open(old_fn_prevmod, "w") as f:
-                    f.write(new_modified)
+        # update last modified time file
+        with open(old_fn_prevmod, "w") as f:
+            f.write(new_modified)
 
-                # rewrite last modified file 
-                with open(old_fn_data, "w") as f:
-                    f.write(str(new_data))
-        else:
-            with open(old_fn_prevmod, "w") as f:
-                f.write(new_modified)
-            with open(old_fn_data, "w") as f:
-                f.write(str(new_data))
-
+        # rewrite website content file
+        with open(old_fn_data, "w") as f:
+            f.write(str(new_data))
 
         # print(new_file.contents)
 
