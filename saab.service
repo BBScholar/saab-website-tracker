@@ -1,0 +1,10 @@
+[Unit]
+Description=Checks status of Dr. Daniel Saab's website at Case Western Reserve University
+
+[Service]
+Type=oneshot
+User=saab
+ExecStart=/usr/bin/saab_website_updates.py /etc/saab-config.yaml
+RemainAfterExit=true
+
+
