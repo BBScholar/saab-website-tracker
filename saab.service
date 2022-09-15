@@ -8,3 +8,7 @@ ExecStart=/usr/bin/saab_website_updates.py /etc/saab-config.yaml
 RemainAfterExit=false
 
 
+[Install]
+WantedBy=multi-user.target
+
+

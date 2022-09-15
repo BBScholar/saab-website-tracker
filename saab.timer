@@ -2,7 +2,7 @@
 Description=Runs every 5 minutes
 
 [Timer]
-OnCalendar=*-*-*:00,05,10,15,20,25,30,35,40,45,50,55,60:00
+OnCalendar=*-*-* *:00,05,10,15,20,25,30,35,40,45,50,55:00
 Unit=saab.service
 Persistent=true
 
