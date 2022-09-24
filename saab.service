@@ -1,5 +1,5 @@
 [Unit]
-Description=Checks status of Dr. Daniel Saab's website at Case Western Reserve University
+Description=Dr. Saab Website Checker
 
 [Service]
 Type=oneshot

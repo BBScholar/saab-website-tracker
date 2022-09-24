@@ -115,12 +115,11 @@ def main(config_file):
         old_data_lines = old_data.split("\n")
 
         # stuff with diff here
-        res = list(difflib.unified_diff(new_data_lines, old_data_lines, fromfiledate=old_mod, tofiledate=new_mod))
+        res = list(difflib.unified_diff(old_data_lines, new_data_lines, fromfiledate=old_mod, tofiledate=new_mod))
         diff = ""
         for i in res:
             diff += i
             diff += "\n"
-        # print(diff)
 
         full_message = default_message.format(class_code=x.upper(), url=url, diff=diff)
         print(full_message)
