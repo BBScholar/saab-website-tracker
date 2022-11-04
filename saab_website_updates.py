@@ -8,6 +8,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import difflib
 
+DISCORD_MSG_LIMIT = 2000 # chars
 
 default_message = """
 {class_code} site updated!
@@ -34,12 +35,17 @@ def send_discord_message(hook_url, ping_id, message):
     if ping_id is not None:
         s += f"<@&{ping_id}>\n"
     s += message
-    
-    data= {
-        "content": s
-    }
-    
-    requests.post(hook_url, data=data)
+
+    i = 0
+    while i < len(s):
+        data= {
+            "content": s[i:i+DISCORD_MSG_LIMIT-1]
+        }
+        requests.post(hook_url, data=data)
+        
+        i = i + DISCORD_MSG_LIMIT
+        time.sleep(1)
+        
 
 def write_new_files(mod_fn, data_fn, mod, data):
         with open(mod_fn, "w") as f:
