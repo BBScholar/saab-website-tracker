@@ -39,7 +39,7 @@ def send_discord_message(hook_url, ping_id, message):
     i = 0
     while i < len(s):
         data= {
-            "content": s[i:i+DISCORD_MSG_LIMIT-1]
+            "content": s[i:i+DISCORD_MSG_LIMIT]
         }
         requests.post(hook_url, data=data)
         
